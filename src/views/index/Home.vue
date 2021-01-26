@@ -95,6 +95,7 @@
       :form-conf="formConf"
       :show-field="!!drawingList.length"
       @tag-change="tagChange"
+      @fetch-data="fetchData"
     />
 
     <form-drawer
@@ -266,18 +267,59 @@ export default {
     })
   },
   methods: {
+    setObjectValueByStringKeys(obj, strKeys, val) {
+      const arr = strKeys.split('.')
+      arr.reduce((pre, item, i) => {
+        if (arr.length === i + 1) {
+          pre[item] = val
+        } else if (Object.prototype.toString.call(pre[item]) !== '[Object Object]') {
+          pre[item] = {}
+        }
+        return pre[item]
+      }, obj)
+    },
+    setRespData(component, respData) {
+      const { dataPath, renderKey, dataConsumer } = component.__config__
+      if (!dataPath || !dataConsumer) return
+      const data = dataPath.split('.').reduce((pre, item) => pre[item], respData)
+      this.setObjectValueByStringKeys(component, dataConsumer, data)
+      const i = this.drawingList.findIndex(item => item.__config__.renderKey === renderKey)
+      if (i > -1) this.$set(this.drawingList, i, component)
+    },
+    fetchData(component) {
+      const { dataType, method, url } = component.__config__
+      if (dataType === 'dynamic' && method && url) {
+        this.setLoading(component, true)
+        this.$axios({
+          method,
+          url
+        }).then(resp => {
+          this.setLoading(component, false)
+          this.setRespData(component, resp.data)
+        })
+      }
+    },
+    setLoading(component, val) {
+      const { directives } = component
+      if (Array.isArray(directives)) {
+        const t = directives.find(d => d.name === 'loading')
+        if (t) t.value = val
+      }
+    },
     activeFormItem(currentItem) {
       this.activeData = currentItem
       this.activeId = currentItem.__config__.formId
     },
     onEnd(obj) {
       if (obj.from !== obj.to) {
+        this.fetchData(tempActiveData)
         this.activeData = tempActiveData
         this.activeId = this.idGlobal
       }
     },
     addComponent(item) {
       const clone = this.cloneComponent(item)
+      this.fetchData(clone)
       this.drawingList.push(clone)
       this.activeFormItem(clone)
     },
